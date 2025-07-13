@@ -4,6 +4,7 @@ import 'package:barber/view/barber_pages.dart/QueueManagerPage.dart';
 import 'package:barber/view/barber_pages.dart/ViewDailyStatsPage.dart';
 import 'package:barber/view/barber_pages.dart/BarberMessagesPage.dart';
 import 'package:barber/view/barber_pages.dart/BarberSettingsPage.dart';
+import 'package:barber/view/barber_pages.dart/BarberRatingsViewPage.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -26,6 +27,7 @@ class _BarberOwnerHomePageState extends State<BarberOwnerHomePage> {
     const BarberDashboard(),
     const QueueManagerPage(),
     const BarberMessagesPage(),
+    const BarberRatingsViewPage(), // Added Ratings page
     const BarberSettingsPage(),
   ];
 
@@ -47,12 +49,16 @@ class _BarberOwnerHomePageState extends State<BarberOwnerHomePage> {
           BottomNavigationBarItem(icon: Icon(Icons.queue), label: 'Queue'),
           BottomNavigationBarItem(icon: Icon(Icons.message), label: 'Messages'),
           BottomNavigationBarItem(
+            icon: Icon(Icons.star),
+            label: 'Ratings',
+          ), // Added Ratings item
+          BottomNavigationBarItem(
             icon: Icon(Icons.settings),
             label: 'Settings',
           ),
         ],
         onTap: (index) {
-          print('Navigating to tab $index');
+          debugPrint('Navigating to tab $index');
           setState(() {
             _currentIndex = index;
           });
@@ -69,6 +75,10 @@ class BarberDashboard extends StatelessWidget {
   // Reference to the current user's barber document
   DocumentReference get _barberRef {
     final email = FirebaseAuth.instance.currentUser?.email;
+    if (email == null) {
+      debugPrint('Error: Barber email is null');
+      throw Exception('Barber email is null');
+    }
     return FirebaseFirestore.instance.collection('BarbersDetails').doc(email);
   }
 
@@ -220,7 +230,6 @@ class BarberDashboard extends StatelessWidget {
                                     color: Colors.blue.shade800,
                                   ),
                                   onPressed: () {
-                                    // Navigate to edit profile page
                                     push_next_page(
                                       context,
                                       const BarberSettingsPage(),
@@ -269,7 +278,7 @@ class BarberDashboard extends StatelessWidget {
                                     ),
                                     _buildStatItem(
                                       'Earnings',
-                                      '\$${todayEarnings.toStringAsFixed(2)}',
+                                      '${todayEarnings.toStringAsFixed(2)}',
                                       Icons.attach_money,
                                     ),
                                   ],

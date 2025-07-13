@@ -47,6 +47,7 @@ dependencies:
   flutter_image_compress: ^2.4.0
   google_maps_flutter: ^2.12.1
   flutter_map: ^8.1.1
+  flutter_rating_bar: ^4.0.1
 
 
 dev_dependencies:

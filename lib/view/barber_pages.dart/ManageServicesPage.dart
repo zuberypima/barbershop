@@ -255,7 +255,7 @@ class _ManageServicesPageState extends State<ManageServicesPage> {
                           TextFormField(
                             controller: _priceRangeController,
                             decoration: InputDecoration(
-                              labelText: 'Price Range (e.g., \$20-\$30)',
+                              labelText: 'Price Range (e.g., TZs 20- Tzs30)',
                               prefixIcon: Icon(
                                 Icons.attach_money,
                                 color: Colors.blue.shade800,

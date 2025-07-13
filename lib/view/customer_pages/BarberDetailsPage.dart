@@ -4,7 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shimmer/shimmer.dart';
-import 'package:barber/services/navigator.dart'; // Assuming your navigator service
+import 'package:barber/services/navigator.dart';
 
 class BarberDetailsPage extends StatefulWidget {
   final String barberId; // Email or ID of the barber
@@ -18,6 +18,7 @@ class BarberDetailsPage extends StatefulWidget {
 class _BarberDetailsPageState extends State<BarberDetailsPage> {
   String? _selectedService;
   bool _isBooking = false;
+  bool _canRate = false;
 
   // Reference to the barber's document
   DocumentReference get _barberRef => FirebaseFirestore.instance
@@ -27,7 +28,44 @@ class _BarberDetailsPageState extends State<BarberDetailsPage> {
   // Reference to the current customer's document
   DocumentReference get _customerRef {
     final email = FirebaseAuth.instance.currentUser?.email;
+    if (email == null) {
+      debugPrint('Error: Customer email is null');
+      throw Exception('Customer email is null');
+    }
     return FirebaseFirestore.instance.collection('CustomersDetails').doc(email);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _checkCanRate();
+  }
+
+  // Check if the customer has a completed booking to enable rating
+  Future<void> _checkCanRate() async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        debugPrint('Error: User not authenticated');
+        return;
+      }
+
+      final bookingsSnapshot =
+          await _customerRef
+              .collection('bookings')
+              .where('barberId', isEqualTo: widget.barberId)
+              .where('status', isEqualTo: 'completed')
+              .get();
+
+      setState(() {
+        _canRate = bookingsSnapshot.docs.isNotEmpty;
+        debugPrint(
+          'Can rate: $_canRate, Found ${bookingsSnapshot.docs.length} completed bookings',
+        );
+      });
+    } catch (e) {
+      debugPrint('Error checking rating eligibility: $e');
+    }
   }
 
   // Book a service
@@ -53,6 +91,9 @@ class _BarberDetailsPageState extends State<BarberDetailsPage> {
       final customerDoc = await _customerRef.get();
       final customerData = customerDoc.data() as Map<String, dynamic>?;
       final customerName = customerData?['fullName'] as String? ?? 'Anonymous';
+      debugPrint(
+        'Booking for customer: $customerName, service: $_selectedService',
+      );
 
       // Add to barber's queue
       await _barberRef.collection('queue').add({
@@ -81,6 +122,7 @@ class _BarberDetailsPageState extends State<BarberDetailsPage> {
         _selectedService = null;
       });
     } catch (e) {
+      debugPrint('Booking error: $e');
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Failed to book: $e')));
@@ -89,6 +131,139 @@ class _BarberDetailsPageState extends State<BarberDetailsPage> {
         _isBooking = false;
       });
     }
+  }
+
+  // Submit a rating
+  Future<void> _submitRating(int rating, String feedback) async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        throw Exception('User not logged in');
+      }
+
+      // Add rating to barber's ratings collection
+      await _barberRef.collection('ratings').add({
+        'customerId': user.email,
+        'rating': rating,
+        'feedback': feedback.trim(),
+        'timestamp': FieldValue.serverTimestamp(),
+      });
+
+      // Update barber's average rating and total ratings
+      final ratingsSnapshot = await _barberRef.collection('ratings').get();
+      final totalRatings = ratingsSnapshot.docs.length;
+      final totalRatingSum = ratingsSnapshot.docs.fold<double>(
+        0,
+        (sum, doc) => sum + (doc['rating'] as num).toDouble(),
+      );
+      final averageRating =
+          totalRatings > 0 ? totalRatingSum / totalRatings : 0.0;
+
+      await _barberRef.update({
+        'rating': averageRating,
+        'totalRatings': totalRatings,
+      });
+
+      debugPrint(
+        'Rating submitted: $rating, Feedback: $feedback, Average: $averageRating, Total: $totalRatings',
+      );
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Rating submitted successfully!')),
+      );
+    } catch (e) {
+      debugPrint('Rating submission error: $e');
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to submit rating: $e')));
+    }
+  }
+
+  // Show rating popup
+  void _showRatingDialog() {
+    int? rating;
+    final feedbackController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            title: Text(
+              'Rate Barber',
+              style: GoogleFonts.poppins(fontWeight: FontWeight.bold),
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                DropdownButton<int>(
+                  hint: Text('Select rating', style: GoogleFonts.poppins()),
+                  value: rating,
+                  items:
+                      [1, 2, 3, 4, 5].map((value) {
+                        return DropdownMenuItem<int>(
+                          value: value,
+                          child: Text(
+                            '$value Stars',
+                            style: GoogleFonts.poppins(),
+                          ),
+                        );
+                      }).toList(),
+                  onChanged: (value) {
+                    setState(() {
+                      rating = value;
+                    });
+                  },
+                  isExpanded: true,
+                  underline: Container(height: 1, color: Colors.blue.shade800),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: feedbackController,
+                  decoration: InputDecoration(
+                    hintText: 'Optional feedback',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  maxLines: 3,
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: Text(
+                  'Cancel',
+                  style: GoogleFonts.poppins(color: Colors.grey),
+                ),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  if (rating == null) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Please select a rating')),
+                    );
+                    return;
+                  }
+                  _submitRating(rating!, feedbackController.text);
+                  Navigator.pop(context);
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue.shade800,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                child: Text(
+                  'Submit',
+                  style: GoogleFonts.poppins(color: Colors.white),
+                ),
+              ),
+            ],
+          ),
+    );
   }
 
   @override
@@ -171,6 +346,9 @@ class _BarberDetailsPageState extends State<BarberDetailsPage> {
                                             error,
                                             stackTrace,
                                           ) {
+                                            debugPrint(
+                                              'Image load error: $error',
+                                            );
                                             return Container(
                                               width: 70,
                                               height: 70,
@@ -217,16 +395,23 @@ class _BarberDetailsPageState extends State<BarberDetailsPage> {
                                     const SizedBox(height: 5),
                                     Row(
                                       children: [
-                                        Icon(
-                                          Icons.star,
-                                          color: Colors.amber,
-                                          size: 16,
-                                        ),
                                         Text(
                                           rating.toStringAsFixed(1),
                                           style: GoogleFonts.poppins(
                                             fontSize: 12,
                                           ),
+                                        ),
+                                        const SizedBox(width: 4),
+                                        Row(
+                                          children: List.generate(5, (index) {
+                                            return Icon(
+                                              index < rating.round()
+                                                  ? Icons.star
+                                                  : Icons.star_border,
+                                              color: Colors.amber,
+                                              size: 16,
+                                            );
+                                          }),
                                         ),
                                         Text(
                                           ' ($totalRatings reviews)',
@@ -441,6 +626,36 @@ class _BarberDetailsPageState extends State<BarberDetailsPage> {
                     ),
                     child: Text(
                       'View Directions',
+                      style: GoogleFonts.poppins(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+
+              // Rate Barber Button
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 15,
+                  vertical: 8,
+                ),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: _canRate ? _showRatingDialog : null,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor:
+                          _canRate ? Colors.blue.shade600 : Colors.grey,
+                      padding: const EdgeInsets.symmetric(vertical: 15),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: Text(
+                      'Rate Barber',
                       style: GoogleFonts.poppins(
                         color: Colors.white,
                         fontSize: 16,

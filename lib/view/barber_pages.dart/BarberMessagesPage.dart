@@ -29,6 +29,7 @@ class _BarberMessagesPageState extends State<BarberMessagesPage> {
       });
       return;
     }
+    print('Current user: ${_currentUser!.email}');
     _fetchCustomers();
   }
 
@@ -53,7 +54,9 @@ class _BarberMessagesPageState extends State<BarberMessagesPage> {
               .where((email) => email != null && email != _currentUser!.email)
               .toSet()
               .toList();
-      print('Fetched ${customerEmails.length} unique customers');
+      print(
+        'Fetched ${customerEmails.length} unique customers: $customerEmails',
+      );
 
       final customerData = <String, Map<String, dynamic>>{};
       for (var email in customerEmails) {
@@ -89,22 +92,41 @@ class _BarberMessagesPageState extends State<BarberMessagesPage> {
     if (_messageController.text.trim().isEmpty ||
         _selectedCustomerEmail == null ||
         _currentUser == null) {
+      print('Cannot send message: empty text or null customer/user');
+      setState(() {
+        _errorMessage = 'Please select a customer and enter a message.';
+      });
       return;
     }
     try {
+      final messageData = {
+        'senderId': _currentUser!.email,
+        'receiverId': _selectedCustomerEmail,
+        'text': _messageController.text.trim(),
+        'timestamp': Timestamp.now(),
+        'senderType': 'barber',
+      };
+      print('Sending message to $_selectedCustomerEmail: $messageData');
+
+      // Send to barber's messages collection
       await FirebaseFirestore.instance
           .collection('BarbersDetails')
           .doc(_currentUser!.email)
           .collection('messages')
-          .add({
-            'senderId': _currentUser!.email,
-            'receiverId': _selectedCustomerEmail,
-            'text': _messageController.text.trim(),
-            'timestamp': Timestamp.now(),
-            'senderType': 'barber',
-          });
-      print('Message sent to $_selectedCustomerEmail');
+          .add(messageData);
+
+      // Send to customer's messages collection for bidirectional sync
+      await FirebaseFirestore.instance
+          .collection('CustomersDetails')
+          .doc(_selectedCustomerEmail)
+          .collection('messages')
+          .add(messageData);
+
+      print('Message sent successfully to $_selectedCustomerEmail');
       _messageController.clear();
+      setState(() {
+        _errorMessage = null;
+      });
     } catch (e) {
       print('Error sending message: $e');
       setState(() {
@@ -304,6 +326,7 @@ class _BarberMessagesPageState extends State<BarberMessagesPage> {
                 return const Center(child: CircularProgressIndicator());
               }
               if (snapshot.hasError) {
+                print('Error in customer stream: ${snapshot.error}');
                 return Center(
                   child: Text(
                     'Error loading customers: ${snapshot.error}',
@@ -323,7 +346,12 @@ class _BarberMessagesPageState extends State<BarberMessagesPage> {
                       .toList();
               print('Customer emails in dropdown: $customerEmails');
               if (customerEmails.isEmpty) {
-                return const SizedBox.shrink();
+                return Center(
+                  child: Text(
+                    'No customers found.',
+                    style: GoogleFonts.poppins(color: Colors.grey),
+                  ),
+                );
               }
               return FutureBuilder<List<Map<String, dynamic>>>(
                 future: Future.wait(
@@ -433,6 +461,7 @@ class _BarberMessagesPageState extends State<BarberMessagesPage> {
                 return const Center(child: CircularProgressIndicator());
               }
               if (snapshot.hasError) {
+                print('Error loading messages: ${snapshot.error}');
                 return Center(
                   child: Text(
                     'Error loading messages: ${snapshot.error}',

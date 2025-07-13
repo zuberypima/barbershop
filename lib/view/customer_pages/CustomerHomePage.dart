@@ -1,6 +1,7 @@
 import 'package:barber/services/navigator.dart';
 import 'package:barber/view/barber_pages.dart/BarberShopsPage.dart';
 import 'package:barber/view/customer_pages/NearbyBarbersPage.dart';
+import 'package:barber/view/customer_pages/AllBarbershopsPage.dart'; // Add import for AllBarbershopsPage
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -19,6 +20,7 @@ class _CustomerHomePageState extends State<CustomerHomePage> {
   final _searchController = TextEditingController();
   GeoPoint? _customerLocation;
   int _loyaltyPoints = 0;
+  String _barberViewMode = 'Nearby'; // Default view mode
 
   @override
   void initState() {
@@ -140,6 +142,11 @@ class _CustomerHomePageState extends State<CustomerHomePage> {
               // Implement notifications
             },
           ),
+          IconButton(
+            icon: const Icon(Icons.logout, color: Colors.white),
+            onPressed: _logout,
+            tooltip: 'Logout',
+          ),
         ],
       ),
       body: Container(
@@ -161,7 +168,7 @@ class _CustomerHomePageState extends State<CustomerHomePage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Find Nearby Barbers',
+                      'Find Barbershops',
                       style: GoogleFonts.poppins(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
@@ -231,6 +238,7 @@ class _CustomerHomePageState extends State<CustomerHomePage> {
                             ),
                           ),
                           onPressed: () {
+                            print('Navigating to BarberShopsPage');
                             push_next_page(context, const BarberShopsPage());
                           },
                         ),
@@ -331,7 +339,7 @@ class _CustomerHomePageState extends State<CustomerHomePage> {
                 ),
               ),
 
-              // Nearby Barbers
+              // Nearby Barbers / All Barbershops
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 15),
                 child: Column(
@@ -341,23 +349,55 @@ class _CustomerHomePageState extends State<CustomerHomePage> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(
-                          'Near You',
+                          'Barbershops',
                           style: GoogleFonts.poppins(
                             fontSize: 16,
                             fontWeight: FontWeight.bold,
                             color: Colors.blue.shade800,
                           ),
                         ),
-                        TextButton(
-                          child: Text(
-                            'See all',
-                            style: GoogleFonts.poppins(
-                              color: Colors.blue.shade800,
+                        DropdownButton<String>(
+                          value: _barberViewMode,
+                          items: const [
+                            DropdownMenuItem(
+                              value: 'Nearby',
+                              child: Text('Nearby Barbers'),
                             ),
-                          ),
-                          onPressed: () {
-                            push_next_page(context, NearbyBarbersPage());
+                            DropdownMenuItem(
+                              value: 'All',
+                              child: Text('All Barbershops'),
+                            ),
+                          ],
+                          onChanged: (value) {
+                            if (value != null) {
+                              setState(() {
+                                _barberViewMode = value;
+                              });
+                              print('Selected view mode: $value');
+                              if (value == 'Nearby') {
+                                print('Navigating to NearbyBarbersPage');
+                                push_next_page(
+                                  context,
+                                  const NearbyBarbersPage(),
+                                );
+                              } else if (value == 'All') {
+                                print('Navigating to AllBarbershopsPage');
+                                push_next_page(
+                                  context,
+                                  const AllBarbershopsPage(),
+                                );
+                              }
+                            }
                           },
+                          style: GoogleFonts.poppins(
+                            color: Colors.blue.shade800,
+                            fontSize: 14,
+                          ),
+                          underline: Container(),
+                          icon: Icon(
+                            Icons.arrow_drop_down,
+                            color: Colors.blue.shade800,
+                          ),
                         ),
                       ],
                     ),

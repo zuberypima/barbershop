@@ -1,9 +1,7 @@
 import 'dart:math';
-
-import 'package:barber/view/customer_pages/BookingsPage.dart';
+import 'package:barber/view/MessageInboxPage.dart';
 import 'package:barber/view/customer_pages/CustomerHomePage.dart';
 import 'package:barber/view/customer_pages/CustomerProfilePage.dart';
-import 'package:barber/view/customer_pages/NearbyBarbersPage.dart';
 import 'package:barber/view/customer_pages/PendingBookingsPage.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -20,8 +18,8 @@ class _CustomerMainPageState extends State<CustomerMainPage> {
   int _selectedScreen = 1;
   final List<Widget> _screenList = [
     const PendingBookingsPage(),
-    //  NearbyBarbersPage(), // Replaced CustomerHomePage
     const CustomerHomePage(),
+    MessageInboxPage(),
     const CustomerProfilePage(),
   ];
 
@@ -81,6 +79,8 @@ class _CustomerMainPageState extends State<CustomerMainPage> {
             label: 'My Bookings',
           ),
           BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
+          BottomNavigationBarItem(icon: Icon(Icons.message), label: 'Message'),
+
           BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
         ],
       ),

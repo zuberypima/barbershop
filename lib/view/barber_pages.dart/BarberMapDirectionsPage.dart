@@ -29,11 +29,11 @@ class _BarberMapDirectionsPageState extends State<BarberMapDirectionsPage> {
   String? _errorMessage;
   List<Map<String, dynamic>> _directions = [];
 
-  // Hardcoded Google Maps API key (replace with your own key)
-  final String _googleMapsApiKey = '80NvXyCh9qPkoiZ66tnsrkQJ8lc=';
+  // Your Google Maps API key
+  final String _googleMapsApiKey = 'AIzaSyBOpRefK-45E8lUfGUaicXtSklxLA-XWaY';
 
-  // Default fallback location (New York City)
-  final LatLng _defaultCenter = LatLng(40.7128, -74.0060);
+  // Default fallback location (Dar es Salaam)
+  final LatLng _defaultCenter = LatLng(-6.7894791, 39.1861046);
 
   @override
   void initState() {
@@ -46,25 +46,30 @@ class _BarberMapDirectionsPageState extends State<BarberMapDirectionsPage> {
       _isLoading = true;
       _errorMessage = null;
     });
-
     try {
-      // Get customer location
       await _getCurrentLocation();
-
-      // Get barber details
       await _getBarberDetails();
-
-      // Get directions if both locations are available
       if (_currentPosition != null && _barberLocation != null) {
-        await _fetchDirections();
-        // Adjust map bounds to show both locations
-        _fitBounds();
+        try {
+          await _fetchDirections();
+        } catch (e) {
+          print('Directions failed, but map will still render: $e');
+          setState(() {
+            _errorMessage = 'Failed to load directions: $e';
+          });
+        }
       }
-
       setState(() {
         _isLoading = false;
       });
+      // Delay _fitBounds until after the first frame
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _currentPosition != null && _barberLocation != null) {
+          _fitBounds();
+        }
+      });
     } catch (e) {
+      print('Error in _initializeMap: $e');
       setState(() {
         _errorMessage = 'Error initializing map: $e';
         _isLoading = false;
@@ -76,24 +81,37 @@ class _BarberMapDirectionsPageState extends State<BarberMapDirectionsPage> {
     try {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
-        throw Exception('Location services are disabled.');
+        setState(() {
+          _errorMessage = 'Please enable location services.';
+        });
+        return;
       }
-
       LocationPermission permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
         if (permission == LocationPermission.denied) {
-          throw Exception('Location permissions are denied.');
+          setState(() {
+            _errorMessage = 'Location permissions are denied.';
+          });
+          return;
         }
       }
-
       if (permission == LocationPermission.deniedForever) {
-        throw Exception('Location permissions are permanently denied.');
+        setState(() {
+          _errorMessage =
+              'Location permissions are permanently denied. Please enable them in settings.';
+        });
+        return;
       }
-
       _currentPosition = await Geolocator.getCurrentPosition();
+      print(
+        'Current position: ${_currentPosition?.latitude}, ${_currentPosition?.longitude}',
+      );
     } catch (e) {
-      rethrow;
+      print('Error in _getCurrentLocation: $e');
+      setState(() {
+        _errorMessage = 'Error getting location: $e';
+      });
     }
   }
 
@@ -104,31 +122,31 @@ class _BarberMapDirectionsPageState extends State<BarberMapDirectionsPage> {
               .collection('BarbersDetails')
               .doc(widget.barberEmail)
               .get();
+      print('Barber document exists: ${doc.exists}');
       if (!doc.exists) {
         throw Exception('Barber not found.');
       }
       final data = doc.data() as Map<String, dynamic>?;
+      print('Barber document data: $data');
       if (data != null) {
         final latitude = data['latitude'] as double?;
         final longitude = data['longitude'] as double?;
         if (latitude != null && longitude != null) {
           _barberLocation = LatLng(latitude, longitude);
           _barberShopName = data['shopName'] as String? ?? 'Barber Shop';
+          print('Barber location: $latitude, $longitude');
         } else {
           throw Exception('Barber location not available.');
         }
       }
     } catch (e) {
+      print('Error in _getBarberDetails: $e');
       rethrow;
     }
   }
 
   Future<void> _fetchDirections() async {
     try {
-      if (_googleMapsApiKey == 'YOUR_GOOGLE_MAPS_API_KEY_HERE') {
-        throw Exception('Please provide a valid Google Maps API key.');
-      }
-
       final origin =
           '${_currentPosition!.latitude},${_currentPosition!.longitude}';
       final destination =
@@ -136,30 +154,30 @@ class _BarberMapDirectionsPageState extends State<BarberMapDirectionsPage> {
       final url = Uri.parse(
         'https://maps.googleapis.com/maps/api/directions/json?origin=$origin&destination=$destination&mode=driving&key=$_googleMapsApiKey',
       );
-
+      print('Fetching directions from URL: $url');
       final response = await http.get(url);
+      print('Directions API response status: ${response.statusCode}');
+      print('Directions API response body: ${response.body}');
       if (response.statusCode != 200) {
-        throw Exception('Failed to fetch directions.');
+        throw Exception(
+          'Failed to fetch directions: ${response.statusCode} - ${response.reasonPhrase}',
+        );
       }
-
       final data = jsonDecode(response.body) as Map<String, dynamic>;
+      print('Directions API status: ${data['status']}');
       if (data['status'] != 'OK') {
-        throw Exception('Directions API error: ${data['status']}');
+        throw Exception(
+          'Directions API error: ${data['status']} - ${data['error_message'] ?? 'No error message'}',
+        );
       }
-
       final routes = data['routes'] as List<dynamic>;
       if (routes.isEmpty) {
         throw Exception('No routes found.');
       }
-
       final polylinePoints = routes[0]['overview_polyline']['points'] as String;
       final legs = routes[0]['legs'] as List<dynamic>;
       final steps = legs[0]['steps'] as List<dynamic>;
-
-      // Decode polyline points
       _routePoints = _decodePolyline(polylinePoints);
-
-      // Extract direction steps
       _directions =
           steps.map((step) {
             return {
@@ -169,21 +187,22 @@ class _BarberMapDirectionsPageState extends State<BarberMapDirectionsPage> {
             };
           }).toList();
     } catch (e) {
+      print('Error in _fetchDirections: $e');
       rethrow;
     }
   }
 
-  // Fit map bounds to show both customer and barber locations
   void _fitBounds() {
     if (_currentPosition != null && _barberLocation != null) {
-      // Initialize bounds with the two points
       final customerPoint = LatLng(
         _currentPosition!.latitude,
         _currentPosition!.longitude,
       );
       final barberPoint = _barberLocation!;
-
-      // Create bounds by finding min/max coordinates
+      if (customerPoint == barberPoint) {
+        _mapController.move(customerPoint, 14);
+        return;
+      }
       final southWest = LatLng(
         customerPoint.latitude < barberPoint.latitude
             ? customerPoint.latitude
@@ -200,21 +219,17 @@ class _BarberMapDirectionsPageState extends State<BarberMapDirectionsPage> {
             ? customerPoint.longitude
             : barberPoint.longitude,
       );
-
       final bounds = LatLngBounds(southWest, northEast);
-
       _mapController.fitCamera(
         CameraFit.bounds(bounds: bounds, padding: const EdgeInsets.all(50)),
       );
     }
   }
 
-  // Decode polyline string to list of LatLng
   List<LatLng> _decodePolyline(String encoded) {
     List<LatLng> points = [];
     int index = 0, len = encoded.length;
     int lat = 0, lng = 0;
-
     while (index < len) {
       int b, shift = 0, result = 0;
       do {
@@ -224,7 +239,6 @@ class _BarberMapDirectionsPageState extends State<BarberMapDirectionsPage> {
       } while (b >= 0x20);
       int dlat = ((result & 1) != 0 ? ~(result >> 1) : (result >> 1));
       lat += dlat;
-
       shift = 0;
       result = 0;
       do {
@@ -234,18 +248,15 @@ class _BarberMapDirectionsPageState extends State<BarberMapDirectionsPage> {
       } while (b >= 0x20);
       int dlng = ((result & 1) != 0 ? ~(result >> 1) : (result >> 1));
       lng += dlng;
-
       points.add(LatLng(lat / 1E5, lng / 1E5));
     }
     return points;
   }
 
-  // Strip HTML tags from instructions
   String _stripHtml(String htmlText) {
     return htmlText.replaceAll(RegExp(r'<[^>]+>'), '');
   }
 
-  // Logout function
   Future<void> _logout() async {
     try {
       await FirebaseAuth.instance.signOut();
@@ -273,13 +284,6 @@ class _BarberMapDirectionsPageState extends State<BarberMapDirectionsPage> {
         backgroundColor: Colors.blue[800],
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout, color: Colors.white),
-            onPressed: _logout,
-            tooltip: 'Logout',
-          ),
-        ],
       ),
       body:
           _isLoading
@@ -302,7 +306,7 @@ class _BarberMapDirectionsPageState extends State<BarberMapDirectionsPage> {
                   ],
                 ),
               )
-              : _errorMessage != null
+              : _currentPosition == null && _barberLocation == null
               ? Center(
                 child: Padding(
                   padding: const EdgeInsets.all(20.0),
@@ -312,7 +316,7 @@ class _BarberMapDirectionsPageState extends State<BarberMapDirectionsPage> {
                       Icon(Icons.error, size: 60, color: Colors.red[400]),
                       const SizedBox(height: 20),
                       Text(
-                        _errorMessage!,
+                        _errorMessage ?? 'Unable to load locations.',
                         style: GoogleFonts.poppins(
                           fontSize: 16,
                           color: Colors.red[700],
@@ -346,71 +350,91 @@ class _BarberMapDirectionsPageState extends State<BarberMapDirectionsPage> {
               )
               : Stack(
                 children: [
-                  FlutterMap(
-                    mapController: _mapController,
-                    options: MapOptions(
-                      initialCenter:
-                          _currentPosition != null
-                              ? LatLng(
-                                _currentPosition!.latitude,
-                                _currentPosition!.longitude,
-                              )
-                              : _defaultCenter,
-                      initialZoom: _currentPosition != null ? 14 : 10,
-                      minZoom: 8,
-                      maxZoom: 18,
-                    ),
-                    children: [
-                      TileLayer(
-                        urlTemplate:
-                            'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-                        subdomains: const ['a', 'b', 'c'],
+                  Container(
+                    height: MediaQuery.of(context).size.height,
+                    child: FlutterMap(
+                      mapController: _mapController,
+                      options: MapOptions(
+                        initialCenter:
+                            _currentPosition != null
+                                ? LatLng(
+                                  _currentPosition!.latitude,
+                                  _currentPosition!.longitude,
+                                )
+                                : _barberLocation ?? _defaultCenter,
+                        initialZoom: 14,
+                        minZoom: 8,
+                        maxZoom: 18,
                       ),
-                      if (_currentPosition != null)
+                      children: [
+                        TileLayer(
+                          urlTemplate:
+                              'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+                          subdomains: const ['a', 'b', 'c'],
+                          errorTileCallback: (tile, error, stackTrace) {
+                            print('Tile loading error: $error');
+                          },
+                        ),
                         MarkerLayer(
                           markers: [
-                            Marker(
-                              point: LatLng(
-                                _currentPosition!.latitude,
-                                _currentPosition!.longitude,
+                            if (_currentPosition != null)
+                              Marker(
+                                point: LatLng(
+                                  _currentPosition!.latitude,
+                                  _currentPosition!.longitude,
+                                ),
+                                width: 40,
+                                height: 40,
+                                child: const Icon(
+                                  Icons.my_location,
+                                  color: Colors.blue,
+                                  size: 40,
+                                ),
                               ),
-                              width: 40,
-                              height: 40,
-                              child: const Icon(
-                                Icons.my_location,
-                                color: Colors.blue,
-                                size: 40,
+                            if (_barberLocation != null)
+                              Marker(
+                                point: _barberLocation!,
+                                width: 40,
+                                height: 40,
+                                child: const Icon(
+                                  Icons.location_pin,
+                                  color: Colors.red,
+                                  size: 40,
+                                ),
                               ),
-                            ),
                           ],
                         ),
-                      if (_barberLocation != null)
-                        MarkerLayer(
-                          markers: [
-                            Marker(
-                              point: _barberLocation!,
-                              width: 40,
-                              height: 40,
-                              child: const Icon(
-                                Icons.location_pin,
-                                color: Colors.red,
-                                size: 40,
+                        if (_routePoints.isNotEmpty)
+                          PolylineLayer(
+                            polylines: [
+                              Polyline(
+                                points: _routePoints,
+                                strokeWidth: 4,
+                                color: Colors.blue[800]!,
                               ),
-                            ),
-                          ],
-                        ),
-                      if (_routePoints.isNotEmpty)
-                        PolylineLayer(
-                          polylines: [
-                            Polyline(
-                              points: _routePoints,
-                              strokeWidth: 4,
-                              color: Colors.blue[800]!,
-                            ),
-                          ],
-                        ),
-                    ],
+                            ],
+                          ),
+                      ],
+                    ),
                   ),
+                  if (_errorMessage != null && _routePoints.isEmpty)
+                    Positioned(
+                      top: 10,
+                      left: 10,
+                      right: 10,
+                      child: Container(
+                        padding: const EdgeInsets.all(8),
+                        color: Colors.red.withOpacity(0.8),
+                        child: Text(
+                          _errorMessage!,
+                          style: GoogleFonts.poppins(
+                            fontSize: 14,
+                            color: Colors.white,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ),
                   if (_directions.isNotEmpty)
                     Positioned(
                       bottom: 0,
@@ -479,46 +503,6 @@ class _BarberMapDirectionsPageState extends State<BarberMapDirectionsPage> {
                     ),
                 ],
               ),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: 0, // Home is default since this is a sub-page
-        onTap: (index) {
-          switch (index) {
-            case 0:
-              Navigator.pushNamedAndRemoveUntil(
-                context,
-                '/home',
-                (route) => false,
-              );
-              break;
-            case 1:
-              Navigator.pushNamedAndRemoveUntil(
-                context,
-                '/nearby',
-                (route) => false,
-              );
-              break;
-            case 2:
-              Navigator.pushNamedAndRemoveUntil(
-                context,
-                '/profile',
-                (route) => false,
-              );
-              break;
-          }
-        },
-        selectedItemColor: Colors.blue[800],
-        unselectedItemColor: Colors.grey[600],
-        backgroundColor: Colors.white,
-        elevation: 8,
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.location_on),
-            label: 'Nearby',
-          ),
-          BottomNavigationBarItem(icon: Icon(Icons.book), label: 'Bookings'),
-        ],
-      ),
     );
   }
 }

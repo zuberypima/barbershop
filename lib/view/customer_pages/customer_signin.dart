@@ -35,10 +35,7 @@ class _RegisterCustomerState extends State<RegisterCustomer> {
 
     setState(() => _isLoading = true);
     try {
-      // await AuthenticationServices().createUserWithEmailAndPassword(
-      //   email: _emailController.text.trim(),
-      //   password: _passwordController.text.trim(),
-      // );
+      
       push_next_page(
         context,
         CustomerDetails(

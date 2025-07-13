@@ -323,7 +323,7 @@ class _ViewDailyStatsPageState extends State<ViewDailyStatsPage> {
                                   children: [
                                     _buildStatItem(
                                       'Earnings',
-                                      '\$${dailyEarnings.toStringAsFixed(2)}',
+                                      'Tzs ${dailyEarnings.toStringAsFixed(2)}',
                                       Icons.attach_money,
                                     ),
                                     _buildStatItem(
@@ -400,7 +400,7 @@ class _ViewDailyStatsPageState extends State<ViewDailyStatsPage> {
                                                     ),
                                                   ),
                                                   Text(
-                                                    '\$${(entry.value as num).toDouble().toStringAsFixed(2)}',
+                                                    'Tzs ${(entry.value as num).toDouble().toStringAsFixed(2)}',
                                                     style: GoogleFonts.poppins(
                                                       color:
                                                           Colors.green.shade600,

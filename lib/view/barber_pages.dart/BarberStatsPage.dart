@@ -143,7 +143,7 @@ class _BarberStatsPageState extends State<BarberStatsPage> {
                   ),
                   const SizedBox(height: 20),
                   _buildFormField(
-                    label: 'Daily Earnings (\$)',
+                    label: 'Daily Earnings (Tzs)',
                     icon: Icons.attach_money,
                     controller: _earningsController,
                     keyboardType: TextInputType.number,

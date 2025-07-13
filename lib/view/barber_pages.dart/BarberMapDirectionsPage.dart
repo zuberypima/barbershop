@@ -30,7 +30,7 @@ class _BarberMapDirectionsPageState extends State<BarberMapDirectionsPage> {
   List<Map<String, dynamic>> _directions = [];
 
   // Your Google Maps API key
-  final String _googleMapsApiKey = 'AIzaSyBOpRefK-45E8lUfGUaicXtSklxLA-XWaY';
+  final String _googleMapsApiKey = 'AIzaSyBbtHx7cZQqhcpsBg5ipVu4BEsMaNMJ9Vs';
 
   // Default fallback location (Dar es Salaam)
   final LatLng _defaultCenter = LatLng(-6.7894791, 39.1861046);

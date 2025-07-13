@@ -18,6 +18,7 @@ class _QueueManagerPageState extends State<QueueManagerPage> {
   CollectionReference get _queueRef {
     final email = FirebaseAuth.instance.currentUser?.email;
     if (email == null) {
+      debugPrint('Error: User not logged in');
       throw Exception('User not logged in');
     }
     return FirebaseFirestore.instance
@@ -32,6 +33,7 @@ class _QueueManagerPageState extends State<QueueManagerPage> {
       await FirebaseAuth.instance.signOut();
       Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
     } catch (e) {
+      debugPrint('Logout error: $e');
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Error logging out: $e')));
@@ -41,7 +43,11 @@ class _QueueManagerPageState extends State<QueueManagerPage> {
   // Update booking status
   Future<void> _updateBookingStatus(String bookingId, String newStatus) async {
     try {
+      // Update barber's queue
       await _queueRef.doc(bookingId).update({'status': newStatus});
+      debugPrint(
+        'Updated barber queue: bookingId=$bookingId, status=$newStatus',
+      );
 
       // Update corresponding customer booking status
       final bookingDoc = await _queueRef.doc(bookingId).get();
@@ -49,19 +55,36 @@ class _QueueManagerPageState extends State<QueueManagerPage> {
       if (bookingData != null) {
         final customerId = bookingData['customerId'] as String?;
         if (customerId != null) {
-          await FirebaseFirestore.instance
+          final customerBookingRef = FirebaseFirestore.instance
               .collection('CustomersDetails')
               .doc(customerId)
               .collection('bookings')
-              .doc(bookingId)
-              .update({'status': newStatus});
+              .doc(bookingId);
+
+          // Check if customer booking exists
+          final customerBookingDoc = await customerBookingRef.get();
+          if (customerBookingDoc.exists) {
+            await customerBookingRef.update({'status': newStatus});
+            debugPrint(
+              'Updated customer booking: customerId=$customerId, bookingId=$bookingId, status=$newStatus',
+            );
+          } else {
+            debugPrint(
+              'Warning: Customer booking not found for customerId=$customerId, bookingId=$bookingId',
+            );
+          }
+        } else {
+          debugPrint('Warning: customerId is null for bookingId=$bookingId');
         }
+      } else {
+        debugPrint('Warning: bookingData is null for bookingId=$bookingId');
       }
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Booking $newStatus successfully')),
       );
     } catch (e) {
+      debugPrint('Error updating status for bookingId=$bookingId: $e');
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Error updating status: $e')));
@@ -76,8 +99,12 @@ class _QueueManagerPageState extends State<QueueManagerPage> {
               .collection('CustomersDetails')
               .doc(customerId)
               .get();
+      debugPrint('Fetched customer details for customerId=$customerId');
       return doc.data() as Map<String, dynamic>?;
     } catch (e) {
+      debugPrint(
+        'Error fetching customer details for customerId=$customerId: $e',
+      );
       return null;
     }
   }
@@ -127,7 +154,7 @@ class _QueueManagerPageState extends State<QueueManagerPage> {
                   DropdownButton<String>(
                     value: _selectedStatusFilter,
                     items:
-                        ['All', 'Pending', 'Accepted', 'Rejected']
+                        ['All', 'Pending', 'Accepted', 'Completed', 'Rejected']
                             .map(
                               (status) => DropdownMenuItem(
                                 value: status,
@@ -139,6 +166,7 @@ class _QueueManagerPageState extends State<QueueManagerPage> {
                             )
                             .toList(),
                     onChanged: (value) {
+                      debugPrint('Selected status filter: $value');
                       setState(() {
                         _selectedStatusFilter = value!;
                       });
@@ -166,6 +194,7 @@ class _QueueManagerPageState extends State<QueueManagerPage> {
                             .snapshots(),
                 builder: (context, snapshot) {
                   if (snapshot.hasError) {
+                    debugPrint('Stream error: ${snapshot.error}');
                     return Center(
                       child: Padding(
                         padding: const EdgeInsets.all(20.0),
@@ -326,6 +355,8 @@ class _QueueManagerPageState extends State<QueueManagerPage> {
                                                 ? Colors.orange[600]
                                                 : status == 'accepted'
                                                 ? Colors.green[600]
+                                                : status == 'completed'
+                                                ? Colors.blue[600]
                                                 : Colors.red[600],
                                       ),
                                     ],
@@ -398,6 +429,38 @@ class _QueueManagerPageState extends State<QueueManagerPage> {
                                           ),
                                           child: Text(
                                             'Reject',
+                                            style: GoogleFonts.poppins(
+                                              color: Colors.white,
+                                              fontSize: 12,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ] else if (status == 'accepted') ...[
+                                    const SizedBox(height: 12),
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.end,
+                                      children: [
+                                        ElevatedButton(
+                                          onPressed:
+                                              () => _updateBookingStatus(
+                                                bookingId,
+                                                'completed',
+                                              ),
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: Colors.blue[600],
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
+                                            ),
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 16,
+                                              vertical: 8,
+                                            ),
+                                          ),
+                                          child: Text(
+                                            'Complete',
                                             style: GoogleFonts.poppins(
                                               color: Colors.white,
                                               fontSize: 12,
